@@ -66,6 +66,67 @@ function drawDots() {
         ctx.fill();
     });
 }
+
+let animationStart = null;
+let animationDuration = 60; // ms per segment
+let animatingSegment = null; // { from, to }
+let animationFrameId = null;
+
+function startSegmentAnimation(from, to, onComplete) {
+    animationStart = performance.now();
+    animatingSegment = { from, to, onComplete };
+    
+    // Draw first frame immediately
+    animateSegment(animationStart); // 👈 Start now!
+  }
+
+  function animateSegment(timestamp) {
+    const elapsed = timestamp - animationStart;
+    const progress = Math.min(1, elapsed / animationDuration);
+  
+    redrawAll(); // draw full path up to the last confirmed cell
+  
+    if (animatingSegment && progress < 1) {
+      drawPartialLine(animatingSegment.from, animatingSegment.to, progress);
+      animationFrameId = requestAnimationFrame(animateSegment);
+    } else {
+      // Animation complete
+      if (animatingSegment?.onComplete) {
+        animatingSegment.onComplete(); // now push the final point
+      }
+      animatingSegment = null;
+    }
+  }
+  
+
+  
+  function drawPartialLine(from, to, progress) {
+    const x1 = from.col * cellSize + cellSize / 2;
+    const y1 = from.row * cellSize + cellSize / 2;
+    const x2 = to.col * cellSize + cellSize / 2;
+    const y2 = to.row * cellSize + cellSize / 2;
+  
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const cx = x1 + dx * progress;
+    const cy = y1 + dy * progress;
+  
+    ctx.save();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = cellSize * 0.12;
+    ctx.lineCap = "round";
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#ffffff";
+  
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(cx, cy);
+    ctx.stroke();
+  
+    ctx.restore();
+  }
+  
+
 function drawPath(path, color) {
     if (path.length < 2) return;
 
@@ -242,6 +303,7 @@ canvas.addEventListener("mousedown", (e) => {
 
 canvas.addEventListener("mousemove", (e) => {
     if (!isDrawing) return;
+    if (animatingSegment) return;
 
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -282,7 +344,10 @@ canvas.addEventListener("mousemove", (e) => {
     removeOverlappingCells(cell);
 
     // ✅ Add to path
-    currentPath.push(cell);
+    startSegmentAnimation(lastCell, cell, () => {
+        currentPath.push(cell); // ✅ Push AFTER animation finishes
+        redrawAll();
+      });
     redrawAll();
 });
 

@@ -1,4 +1,5 @@
 import { levels } from './levels.js';
+import { handleResize } from './resize.js';
 const gameBoard = document.getElementById('game-board');
 const canvasContainer = document.getElementById('canvas-container');
 const canvas = document.createElement('canvas');
@@ -10,7 +11,7 @@ canvas.height = 600;
 
 const ctx = canvas.getContext('2d');
 canvasContainer.appendChild(canvas);
-
+handleResize(canvas)
 
 let gridSize;
 let cellSize;
@@ -22,34 +23,36 @@ let currentColor;
 
 let dots;
 
-
-let currentLevel = 0;
+const params = new URLSearchParams(window.location.search);
+const userLevel = params.get('lvl') || 1;
+let currentLevel = userLevel - 1;
 
 function drawGrid() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = "gray";
     ctx.lineWidth = 1;
-  
+
     // Vertical lines
-    for (let i = 0; i <= gridSize; i++) {
-      const x = i * cellSize;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
-      ctx.stroke();
+    for (let i = 0; i <= gridSize.cols; i++) {
+        const x = i * cellSize;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
     }
-  
+
     // Horizontal lines
-    for (let i = 0; i <= gridSize; i++) {
-      const y = i * cellSize;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
-      ctx.stroke();
+    for (let i = 0; i <= gridSize.rows; i++) {
+        console.log(i)
+        const y = i * cellSize;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
     }
-  }
-  
-  
+}
+
+
 
 function drawDots() {
 
@@ -64,6 +67,11 @@ function drawDots() {
         ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
         ctx.fillStyle = color;
         ctx.fill();
+
+        // Add border
+        ctx.lineWidth = 1; // change this to control thickness
+        ctx.strokeStyle = "white"; // border color
+        ctx.stroke();
     });
 }
 
@@ -75,57 +83,57 @@ let animationFrameId = null;
 function startSegmentAnimation(from, to, onComplete) {
     animationStart = performance.now();
     animatingSegment = { from, to, onComplete };
-    
+
     // Draw first frame immediately
     animateSegment(animationStart); // 👈 Start now!
-  }
+}
 
-  function animateSegment(timestamp) {
+function animateSegment(timestamp) {
     const elapsed = timestamp - animationStart;
     const progress = Math.min(1, elapsed / animationDuration);
-  
-    redrawAll(); // draw full path up to the last confirmed cell
-  
-    if (animatingSegment && progress < 1) {
-      drawPartialLine(animatingSegment.from, animatingSegment.to, progress);
-      animationFrameId = requestAnimationFrame(animateSegment);
-    } else {
-      // Animation complete
-      if (animatingSegment?.onComplete) {
-        animatingSegment.onComplete(); // now push the final point
-      }
-      animatingSegment = null;
-    }
-  }
-  
 
-  
-  function drawPartialLine(from, to, progress) {
+    redrawAll(); // draw full path up to the last confirmed cell
+
+    if (animatingSegment && progress < 1) {
+        drawPartialLine(animatingSegment.from, animatingSegment.to, progress);
+        animationFrameId = requestAnimationFrame(animateSegment);
+    } else {
+        // Animation complete
+        if (animatingSegment?.onComplete) {
+            animatingSegment.onComplete(); // now push the final point
+        }
+        animatingSegment = null;
+    }
+}
+
+
+
+function drawPartialLine(from, to, progress) {
     const x1 = from.col * cellSize + cellSize / 2;
     const y1 = from.row * cellSize + cellSize / 2;
     const x2 = to.col * cellSize + cellSize / 2;
     const y2 = to.row * cellSize + cellSize / 2;
-  
+
     const dx = x2 - x1;
     const dy = y2 - y1;
     const cx = x1 + dx * progress;
     const cy = y1 + dy * progress;
-  
+
     ctx.save();
     ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = cellSize * 0.12;
     ctx.lineCap = "round";
     ctx.shadowBlur = 10;
     ctx.shadowColor = "#ffffff";
-  
+
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(cx, cy);
     ctx.stroke();
-  
+
     ctx.restore();
-  }
-  
+}
+
 
 function drawPath(path, color) {
     if (path.length < 2) return;
@@ -178,7 +186,7 @@ function drawPath(path, color) {
 function getCellFromCoords(x, y) {
     const col = Math.floor(x / cellSize);
     const row = Math.floor(y / cellSize);
-    if (row >= 0 && row < gridSize && col >= 0 && col < gridSize) {
+    if (row >= 0 && row < gridSize.rows && col >= 0 && col < gridSize.cols) {
         return { row, col };
     }
     return null;
@@ -253,11 +261,26 @@ function checkIfAllDotsConnected() {
     return true;
 }
 
+function getEventPosition(e) {
+    if (e.touches && e.touches.length > 0) {
+        return {
+            x: e.touches[0].clientX,
+            y: e.touches[0].clientY
+        };
+    } else {
+        return {
+            x: e.clientX,
+            y: e.clientY
+        };
+    }
+}
 
-canvas.addEventListener("mousedown", (e) => {
+const onCellTouch = (e) => {
+    e.preventDefault();
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const { x: rx, y: ry } = getEventPosition(e);
+    const x = rx - rect.left;
+    const y = ry - rect.top;
 
     const cell = getCellFromCoords(x, y);
     console.log(cell)
@@ -271,12 +294,12 @@ canvas.addEventListener("mousedown", (e) => {
             const path = allPaths[i];
             const start = path.cells[0];
             const end = path.cells[path.cells.length - 1];
-      
+
             if (
-              path.color === dotColor &&
-              (isSameCell(start, cell) || isSameCell(end, cell))
+                path.color === dotColor &&
+                (isSameCell(start, cell) || isSameCell(end, cell))
             ) {
-              allPaths.splice(i, 1); // remove the line
+                allPaths.splice(i, 1); // remove the line
             }
         }
         // Start drawing only if there's a dot
@@ -298,16 +321,17 @@ canvas.addEventListener("mousedown", (e) => {
             return;
         }
     }
+}
 
-});
-
-canvas.addEventListener("mousemove", (e) => {
+const oncellMove = (e) => {
     if (!isDrawing) return;
     if (animatingSegment) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const { x: rx, y: ry } = getEventPosition(e);
+
+    const x = rx - rect.left;
+    const y = ry - rect.top;
 
     const cell = getCellFromCoords(x, y);
 
@@ -323,8 +347,8 @@ canvas.addEventListener("mousemove", (e) => {
     const dot = findDotAtCell(cell);
     if (dot && dot.color !== currentColor) return;
 
-     // 🟥 If it's a same-colored dot (not the start), stop after adding it
-     if (dot && dot.color === currentColor && !isSameCell(cell, currentPath[0])) {
+    // 🟥 If it's a same-colored dot (not the start), stop after adding it
+    if (dot && dot.color === currentColor && !isSameCell(cell, currentPath[0])) {
         currentPath.push(cell);
         allPaths.push({ color: currentColor, cells: currentPath });
         isDrawing = false;
@@ -347,11 +371,11 @@ canvas.addEventListener("mousemove", (e) => {
     startSegmentAnimation(lastCell, cell, () => {
         currentPath.push(cell); // ✅ Push AFTER animation finishes
         redrawAll();
-      });
+    });
     redrawAll();
-});
+}
 
-canvas.addEventListener("mouseup", () => {
+const onCellUp = (e) => {
     if (isDrawing && currentPath.length > 1) {
         allPaths.push({
             color: currentColor,
@@ -372,7 +396,19 @@ canvas.addEventListener("mouseup", () => {
             loadLevel(currentLevel + 1);
         }, 300);
     }
-});
+}
+
+// desktop
+canvas.addEventListener("mousedown", onCellTouch);
+
+canvas.addEventListener("mousemove", oncellMove);
+
+canvas.addEventListener("mouseup", onCellUp);
+
+// mobile
+canvas.addEventListener("touchstart", onCellTouch);
+canvas.addEventListener("touchmove", oncellMove);
+canvas.addEventListener("touchend", onCellUp);
 
 resetBtn.addEventListener("click", () => {
     loadLevel(currentLevel);
@@ -397,16 +433,16 @@ function loadLevel(levelIndex) {
         loadLevel(currentLevel);
         return;
     }
-    const level  = levels[levelIndex];
+    const level = levels[levelIndex];
     gridSize = level.gridSize;
-    cellSize = canvas.width / gridSize;
+    cellSize = canvas.width / gridSize.rows;
     dots = JSON.parse(JSON.stringify(level.dots)); // deep copy
     currentLevel = levelIndex;
     allPaths.length = 0; // clear all paths
     currentColor = null;
     currentPath = [];
     isDrawing = false;
-    currentLevelDisplay.innerText = currentLevel+1;
+    currentLevelDisplay.innerText = currentLevel + 1;
     redrawAll();
 }
 
